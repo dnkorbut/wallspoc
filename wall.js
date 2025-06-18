@@ -171,10 +171,10 @@ export default class Wall {
         this.#points.length = 0
         this.#pointsVisible.length = 0
 
-        this.#points.push([this.#start[0] + this.#normal[0] * this.#depth, this.#start[1] + this.#normal[1] * this.#depth])
-        this.#points.push([this.#start[0] - this.#normal[0] * this.#depth, this.#start[1] - this.#normal[1] * this.#depth])
-        this.#points.push([this.#end[0] - this.#normal[0] * this.#depth, this.#end[1] - this.#normal[1] * this.#depth])
-        this.#points.push([this.#end[0] + this.#normal[0] * this.#depth, this.#end[1] + this.#normal[1] * this.#depth])
+        this.#points.push([this.#start[0] + this.#normal[0] * (this.#depth + this.#depth * this.#baseline), this.#start[1] + this.#normal[1] * (this.#depth + this.#depth * this.#baseline)])
+        this.#points.push([this.#start[0] - this.#normal[0] * (this.#depth - this.#depth * this.#baseline), this.#start[1] - this.#normal[1] * (this.#depth - this.#depth * this.#baseline)])
+        this.#points.push([this.#end[0] - this.#normal[0] * (this.#depth - this.#depth * this.#baseline), this.#end[1] - this.#normal[1] * (this.#depth - this.#depth * this.#baseline)])
+        this.#points.push([this.#end[0] + this.#normal[0] * (this.#depth + this.#depth * this.#baseline), this.#end[1] + this.#normal[1] * (this.#depth + this.#depth * this.#baseline)])
 
         this.#pointsVisible.push(!this.#isPointInsideOtherWalls(this.#points[0]))
         this.#pointsVisible.push(!this.#isPointInsideOtherWalls(this.#points[1]))

@@ -29,7 +29,8 @@
             display: none;
         }
 
-        #dialog input {
+        #dialog input,
+        #dialog select {
             width: 100px;
             padding: 5px;
             margin: 10px 0;
@@ -39,14 +40,35 @@
             padding: 5px 10px;
             margin-right: 5px;
         }
+
+        #dialog .input-group {
+            margin: 10px 0;
+        }
+
+        #dialog label {
+            display: inline-block;
+            width: 80px;
+            font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
     <canvas id="canvas"></canvas>
     <div id="dialog">
-        <h3>Wall Depth</h3>
-        <input type="number" id="depthInput" value="32">
+        <h3>Wall Properties</h3>
+        <div class="input-group">
+            <label for="depthInput">Depth:</label>
+            <input type="number" id="depthInput" value="32">
+        </div>
+        <div class="input-group">
+            <label for="baselineSelect">Baseline:</label>
+            <select id="baselineSelect">
+                <option value="0">Middle</option>
+                <option value="1">Front</option>
+                <option value="-1">Back</option>
+            </select>
+        </div>
         <div>
             <button id="saveBtn">Save</button>
             <button id="cancelBtn">Cancel</button>
@@ -61,6 +83,7 @@
         const ctx = canvas.getContext('2d')
         const dialog = document.getElementById('dialog')
         const depthInput = document.getElementById('depthInput')
+        const baselineSelect = document.getElementById('baselineSelect')
         const saveBtn = document.getElementById('saveBtn')
         const cancelBtn = document.getElementById('cancelBtn')
 
@@ -73,6 +96,7 @@
         let isShiftPressed = false
         let snapTarget = null
         let connectedPoints = [] // Track points that should move together
+        let dialogActive = false
 
         // Set canvas size
         function resizeCanvas() {
@@ -154,15 +178,18 @@
             e.stopPropagation()
             if (selectedWall) {
                 selectedWall.depth = parseInt(depthInput.value)
+                selectedWall.baseline = parseInt(baselineSelect.value)
                 draw()
             }
             dialog.style.display = 'none'
+            dialogActive = false
             selectedWall = null
         })
 
         cancelBtn.addEventListener('click', (e) => {
             e.stopPropagation()
             dialog.style.display = 'none'
+            dialogActive = false
             selectedWall = null
         })
 
@@ -173,7 +200,7 @@
 
         window.addEventListener('mousedown', (e) => {
             // Prevent any canvas interactions when dialog is open
-            if (dialog.style.display === 'block') {
+            if (dialogActive) {
                 return
             }
 
@@ -207,7 +234,9 @@
                 if (wall) {
                     selectedWall = wall
                     depthInput.value = wall.depth
+                    baselineSelect.value = wall.baseline
                     dialog.style.display = 'block'
+                    dialogActive = true
                 } else {
                     // Start wall creation only if not clicking on wall
                     state = 1
@@ -219,7 +248,7 @@
 
         window.addEventListener('mousemove', (e) => {
             // Prevent any canvas interactions when dialog is open
-            if (dialog.style.display === 'block') {
+            if (dialogActive) {
                 return
             }
 
@@ -272,7 +301,7 @@
 
         window.addEventListener('mouseup', (e) => {
             // Prevent any canvas interactions when dialog is open
-            if (dialog.style.display === 'block') {
+            if (dialogActive) {
                 return
             }
 
