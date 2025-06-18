@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wall Editor</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            background-color: #f0f0f0;
+        }
+
+        #dialog {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        #dialog input {
+            width: 100px;
+            padding: 5px;
+            margin: 10px 0;
+        }
+
+        #dialog button {
+            padding: 5px 10px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="dialog">
+        <h3>Wall Depth</h3>
+        <input type="number" id="depthInput" value="32">
+        <div>
+            <button id="saveBtn">Save</button>
+            <button id="cancelBtn">Cancel</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import Wall from './wall.js'
+        import * as math from './math.js'
+
+        const canvas = document.getElementById('canvas')
+        const ctx = canvas.getContext('2d')
+        const dialog = document.getElementById('dialog')
+        const depthInput = document.getElementById('depthInput')
+        const saveBtn = document.getElementById('saveBtn')
+        const cancelBtn = document.getElementById('cancelBtn')
+
+        let state = 0
+        let point1 = [0, 0]
+        let point2 = [0, 0]
+        let draggedWall = null
+        let draggedPointType = null // 'start' or 'end'
+        let isDragging = false
+        let isShiftPressed = false
+        let snapTarget = null
+        let connectedPoints = [] // Track points that should move together
+
+        // Set canvas size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth
+            canvas.height = window.innerHeight
+            draw()
+        }
+        window.addEventListener('resize', resizeCanvas)
+        resizeCanvas()
+
+        function getMousePos(e) {
+            return [e.clientX, e.clientY]
+        }
+
+        function isPointNear(pos, point, threshold = 10) {
+            return Math.sqrt((pos[0] - point[0]) ** 2 + (pos[1] - point[1]) ** 2) < threshold
+        }
+
+        function findPointAt(pos) {
+            for (const wall of Wall.walls) {
+                if (isPointNear(pos, wall.start)) return { wall, type: 'start' }
+                if (isPointNear(pos, wall.end)) return { wall, type: 'end' }
+            }
+            return null
+        }
+
+        function findSnapTarget(pos, excludeWall = null) {
+            for (const wall of Wall.walls) {
+                if (wall === excludeWall) continue
+
+                // Skip points that are currently being moved
+                if (connectedPoints.some(p => p.wall === wall && p.type === 'start')) continue
+                if (isPointNear(pos, wall.start)) return { wall, point: wall.start, type: 'start' }
+
+                if (connectedPoints.some(p => p.wall === wall && p.type === 'end')) continue
+                if (isPointNear(pos, wall.end)) return { wall, point: wall.end, type: 'end' }
+            }
+            return null
+        }
+
+        function findCoLocatedPoints(targetPoint) {
+            const coLocated = []
+            for (const wall of Wall.walls) {
+                if (isPointNear(targetPoint, wall.start, 10)) {
+                    coLocated.push({ wall, type: 'start' })
+                }
+                if (isPointNear(targetPoint, wall.end, 10)) {
+                    coLocated.push({ wall, type: 'end' })
+                }
+            }
+            return coLocated
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Shift') {
+                isShiftPressed = true
+            }
+        })
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') {
+                isShiftPressed = false
+            }
+        })
+
+        function findWallAt(pos) {
+            for (const wall of Wall.walls) {
+                if (wall.isPointInside && wall.isPointInside(pos)) {
+                    return wall
+                }
+            }
+            return null
+        }
+
+        let selectedWall = null
+
+        // Dialog event handlers
+        saveBtn.addEventListener('click', (e) => {
+            e.stopPropagation()
+            if (selectedWall) {
+                selectedWall.depth = parseInt(depthInput.value)
+                draw()
+            }
+            dialog.style.display = 'none'
+            selectedWall = null
+        })
+
+        cancelBtn.addEventListener('click', (e) => {
+            e.stopPropagation()
+            dialog.style.display = 'none'
+            selectedWall = null
+        })
+
+        // Prevent dialog clicks from bubbling to canvas
+        dialog.addEventListener('click', (e) => {
+            e.stopPropagation()
+        })
+
+        window.addEventListener('mousedown', (e) => {
+            // Prevent any canvas interactions when dialog is open
+            if (dialog.style.display === 'block') {
+                return
+            }
+
+            const pos = getMousePos(e)
+            const pointData = findPointAt(pos)
+
+            if (pointData && state === 0) {
+                // Start dragging existing point (only when not in wall creation mode)
+                draggedWall = pointData.wall
+                draggedPointType = pointData.type
+                isDragging = true
+
+                // Find all connected points BEFORE we start moving
+                if (!isShiftPressed) {
+                    const currentPoint = draggedPointType === 'start' ? draggedWall.start : draggedWall.end
+                    connectedPoints = findCoLocatedPoints(currentPoint)
+                } else {
+                    connectedPoints = []
+                }
+                draw()
+            } else if (state === 1) {
+                // Complete wall creation with snapping
+                state = 0
+                const snapTarget2 = findSnapTarget(pos)
+                point2 = snapTarget2 ? snapTarget2.point : pos
+                new Wall(point1, point2, 32)
+                draw()
+            } else if (state === 0) {
+                // Check if clicking on a wall first
+                const wall = findWallAt(pos)
+                if (wall) {
+                    selectedWall = wall
+                    depthInput.value = wall.depth
+                    dialog.style.display = 'block'
+                } else {
+                    // Start wall creation only if not clicking on wall
+                    state = 1
+                    point1 = pos
+                    draw()
+                }
+            }
+        })
+
+        window.addEventListener('mousemove', (e) => {
+            // Prevent any canvas interactions when dialog is open
+            if (dialog.style.display === 'block') {
+                return
+            }
+
+            const pos = getMousePos(e)
+
+            if (isDragging && draggedWall) {
+                // Handle point dragging
+                snapTarget = !isShiftPressed ? findSnapTarget(pos, draggedWall) : null
+                const targetPos = snapTarget ? snapTarget.point : pos
+
+                if (isShiftPressed) {
+                    // When shift is pressed, move only the dragged point
+                    if (draggedPointType === 'start') {
+                        draggedWall.start = targetPos
+                    } else {
+                        draggedWall.end = targetPos
+                    }
+                } else {
+                    // Move all connected points together
+                    connectedPoints.forEach(point => {
+                        if (point.type === 'start') {
+                            point.wall.start = targetPos
+                        } else {
+                            point.wall.end = targetPos
+                        }
+                    })
+                }
+
+                draw()
+            } else if (state === 1) {
+                // Handle wall creation preview
+                snapTarget = findSnapTarget(pos)
+                draw()
+
+                // Draw preview line
+                ctx.beginPath()
+                ctx.moveTo(point1[0], point1[1])
+                const previewEnd = snapTarget ? snapTarget.point : pos
+                ctx.lineTo(previewEnd[0], previewEnd[1])
+                ctx.strokeStyle = 'gray'
+                ctx.lineWidth = 2
+                ctx.setLineDash([5, 5])
+                ctx.stroke()
+                ctx.setLineDash([])
+
+                // Draw preview end point
+                drawPoint(previewEnd, snapTarget ? 'orange' : 'gray')
+            }
+        })
+
+        window.addEventListener('mouseup', (e) => {
+            // Prevent any canvas interactions when dialog is open
+            if (dialog.style.display === 'block') {
+                return
+            }
+
+            if (draggedWall && !isShiftPressed && snapTarget) {
+                // On mouseup, if we're snapped to a target, connect the points
+                const snapCoLocated = findCoLocatedPoints(snapTarget.point)
+
+                // Move all points to exactly the same position
+                const finalPos = snapTarget.point
+                connectedPoints.forEach(point => {
+                    if (point.type === 'start') {
+                        point.wall.start = finalPos
+                    } else {
+                        point.wall.end = finalPos
+                    }
+                })
+                snapCoLocated.forEach(point => {
+                    if (point.type === 'start') {
+                        point.wall.start = finalPos
+                    } else {
+                        point.wall.end = finalPos
+                    }
+                })
+                draw()
+            }
+
+            isDragging = false
+            draggedWall = null
+            draggedPointType = null
+            snapTarget = null
+            connectedPoints = []
+        })
+
+        function drawPoint(point, color = 'black') {
+            ctx.beginPath()
+            ctx.arc(point[0], point[1], 5, 0, 2 * Math.PI)
+            ctx.fillStyle = color
+            ctx.fill()
+        }
+
+        function drawSnapIndicator(point) {
+            ctx.beginPath()
+            ctx.arc(point[0], point[1], 15, 0, 2 * Math.PI)
+            ctx.strokeStyle = 'orange'
+            ctx.lineWidth = 2
+            ctx.setLineDash([3, 3])
+            ctx.stroke()
+            ctx.setLineDash([])
+        }
+
+        function drawWall(wall) {
+            ctx.strokeStyle = 'black'
+            drawPoint(wall.start, 'red')
+            drawPoint(wall.end, 'red')
+            ctx.beginPath()
+            ctx.moveTo(wall.start[0], wall.start[1])
+            ctx.lineTo(wall.end[0], wall.end[1])
+            ctx.globalAlpha = 0.5
+            ctx.setLineDash([5, 5])
+            ctx.stroke()
+            ctx.globalAlpha = 1.0
+            ctx.setLineDash([])
+
+            const segments = wall.segments
+            for (let i = 0; i < segments.length; i++) {
+                const p1 = segments[i][0]
+                const p2 = segments[i][1]
+                drawPoint(p1, 'blue')
+                drawPoint(p2, 'blue')
+                ctx.beginPath()
+                ctx.moveTo(p1[0], p1[1])
+                ctx.lineTo(p2[0], p2[1])
+                ctx.stroke()
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            Wall.walls.forEach(wall => {
+                drawWall(wall)
+            })
+
+            // Draw snap indicator if there's a snap target
+            if (snapTarget) {
+                drawSnapIndicator(snapTarget.point)
+            }
+
+            // Draw first point during wall creation
+            if (state === 1 && point1) {
+                drawPoint(point1, 'red')
+            }
+        }
+    </script>
+</body>
+
+</html>
